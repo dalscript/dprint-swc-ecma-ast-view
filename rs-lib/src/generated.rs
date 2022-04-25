@@ -5954,6 +5954,105 @@ fn set_parent_for_ts_lit<'a>(node: &TsLit<'a>, parent: Node<'a>) {
 }
 
 #[derive(Copy, Clone)]
+pub enum TsMemberName<'a> {
+  Ident(&'a Ident<'a>),
+  PrivateName(&'a PrivateName<'a>),
+}
+
+impl<'a> TsMemberName<'a> {
+  pub fn to<T: CastableNode<'a>>(&self) -> Option<&'a T> {
+    T::to(&self.into())
+  }
+
+  pub fn expect<T: CastableNode<'a>>(&self) -> &'a T {
+    let node: Node<'a> = self.into();
+    if let Some(result) = T::to(&node) {
+      result
+    } else {
+      panic!("Tried to cast node of type {} to {}.", node.kind(), T::kind())
+    }
+  }
+
+  pub fn is<T: CastableNode<'a>>(&self) -> bool {
+    self.kind() == T::kind()
+  }
+  pub fn parent(&self) -> Node<'a> {
+    NodeTrait::parent(self).unwrap()
+  }
+}
+
+impl<'a> Spanned for TsMemberName<'a> {
+  fn span(&self) -> Span {
+    match self {
+      TsMemberName::Ident(node) => node.span(),
+      TsMemberName::PrivateName(node) => node.span(),
+    }
+  }
+}
+
+impl<'a> NodeTrait<'a> for TsMemberName<'a> {
+  fn parent(&self) -> Option<Node<'a>> {
+    match self {
+      TsMemberName::Ident(node) => NodeTrait::parent(*node),
+      TsMemberName::PrivateName(node) => NodeTrait::parent(*node),
+    }
+  }
+
+  fn children(&self) -> Vec<Node<'a>> {
+    match self {
+      TsMemberName::Ident(node) => node.children(),
+      TsMemberName::PrivateName(node) => node.children(),
+    }
+  }
+
+  fn as_node(&self) -> Node<'a> {
+    match self {
+      TsMemberName::Ident(node) => node.as_node(),
+      TsMemberName::PrivateName(node) => node.as_node(),
+    }
+  }
+
+  fn kind(&self) -> NodeKind {
+    match self {
+      TsMemberName::Ident(_) => NodeKind::Ident,
+      TsMemberName::PrivateName(_) => NodeKind::PrivateName,
+    }
+  }
+}
+
+impl<'a> From<&TsMemberName<'a>> for Node<'a> {
+  fn from(node: &TsMemberName<'a>) -> Node<'a> {
+    match node {
+      TsMemberName::Ident(node) => (*node).into(),
+      TsMemberName::PrivateName(node) => (*node).into(),
+    }
+  }
+}
+
+impl<'a> From<TsMemberName<'a>> for Node<'a> {
+  fn from(node: TsMemberName<'a>) -> Node<'a> {
+    match node {
+      TsMemberName::Ident(node) => node.into(),
+      TsMemberName::PrivateName(node) => node.into(),
+    }
+  }
+}
+
+fn get_view_for_ts_member_name<'a>(inner: &'a swc_ast::TsMemberName, bump: &'a Bump) -> TsMemberName<'a> {
+  match inner {
+    swc_ast::TsMemberName::Ident(value) => TsMemberName::Ident(get_view_for_ident(value, bump)),
+    swc_ast::TsMemberName::PrivateName(value) => TsMemberName::PrivateName(get_view_for_private_name(value, bump)),
+  }
+}
+
+fn set_parent_for_ts_member_name<'a>(node: &TsMemberName<'a>, parent: Node<'a>) {
+  match node {
+    TsMemberName::Ident(value) => set_parent_for_ident(value, parent),
+    TsMemberName::PrivateName(value) => set_parent_for_private_name(value, parent),
+  }
+}
+
+#[derive(Copy, Clone)]
 pub enum TsModuleName<'a> {
   Ident(&'a Ident<'a>),
   Str(&'a Str<'a>),
@@ -19852,7 +19951,7 @@ pub struct TsQualifiedName<'a> {
   parent: Option<Node<'a>>,
   pub inner: &'a swc_ast::TsQualifiedName,
   pub left: TsEntityName<'a>,
-  pub right: &'a Ident<'a>,
+  pub right: TsMemberName<'a>,
 }
 
 impl<'a> TsQualifiedName<'a> {
@@ -19882,7 +19981,7 @@ impl<'a> NodeTrait<'a> for TsQualifiedName<'a> {
   fn children(&self) -> Vec<Node<'a>> {
     let mut children = Vec::with_capacity(2);
     children.push((&self.left).into());
-    children.push(self.right.into());
+    children.push((&self.right).into());
     children
   }
 
@@ -19914,11 +20013,11 @@ fn get_view_for_ts_qualified_name<'a>(inner: &'a swc_ast::TsQualifiedName, bump:
     inner,
     parent: None,
     left: get_view_for_ts_entity_name(&inner.left, bump),
-    right: get_view_for_ident(&inner.right, bump),
+    right: get_view_for_ts_member_name(&inner.right, bump),
   });
   let parent: Node<'a> = (&*node).into();
   set_parent_for_ts_entity_name(&node.left, parent);
-  set_parent_for_ident(&node.right, parent);
+  set_parent_for_ts_member_name(&node.right, parent);
   node
 }
 
